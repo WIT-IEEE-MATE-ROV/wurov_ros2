@@ -1,85 +1,150 @@
-#!/usr/bin/env python
-
-"""
-
- This file is part of Enbarr.
-
-    Enbarr is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    Enbarr is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with Enbarr.  If not, see <https://www.gnu.org/licenses/>.
-
-"""
-
-import rclpy as rospy
 import numpy as np
-from auv.msg import ninedof
+import os
+import sys
+import time
+import logging
 
-# Where we'll be publishing our results
-nineDof_current_pub = rospy.Publisher('ninedof_values', ninedof, queue_size=3)
+import adafruit_fxas21002c
+import adafruit_fxos8700
 
-fxas_fxos_is_up = False
+from math import sqrt
+
+import rclpy
+from rclpy.node import Node
+
+from wurovMessages.msg import Ninedof
+
 try:
-    import adafruit_fxas21002c
-    import adafruit_fxos8700
     import board
     import busio
 
-    fxas = adafruit_fxas21002c.FXAS21002C(busio.I2C(board.SCL, board.SDA))
-    fxos = adafruit_fxos8700.FXOS8700(busio.I2C(board.SCL, board.SDA))
+    import adafruit_fxas21002c
+    import adafruit_fxos8700
 
-    fxas_fxos_is_up = True
-    rospy.loginfo("NineDoF sensor is up!")
+    enableSensor = True
+except NotImplementedError as e:
+    print(e, file=sys.stderr)
+    enableSensor = False
 except Exception as e:
-    rospy.logerr("Failed to set up the sensor! We'll assume it's because you aren't running on the right hardware, "
-                 "and we'll provide junk testing values instead.")
-    rospy.logerr(e)
+    print(e, file=sys.stderr)
+    enableSensor = False
 
-# TODO: Set these values according to a user-specified transform that takes rotation of the sensor into account
-_X = 0
-_Y = 1
-_Z = 2
-_Roll = 0
-_Pitch = 1
-_Yaw = 2
+logging.basicConfig(format='[Send][%(levelname)s]: %(message)s', level=logging.DEBUG)
 
 
-def publisher():
-    rospy.init_node('fxas_fxos_nineDof', anonymous=True)
-    rate = rospy.Rate(10)
+def calc_magnitude(x, y, z):
+    return sqrt((x ** 2) + (y ** 2) + (z ** 2))
 
-    sendval_ninedof = ninedof()
-    while not rospy.is_shutdown():
-        # While this node is still running, keep getting sensor values
-        if fxas_fxos_is_up:
-            sendval_ninedof.orientation.roll = fxas.gyroscope[_Roll]
-            sendval_ninedof.orientation.pitch = fxas.gyroscope[_Pitch]
-            sendval_ninedof.orientation.yaw = fxas.gyroscope[_Yaw]
-            sendval_ninedof.translation.x = fxos.accelerometer[_X]
-            sendval_ninedof.translation.y = fxos.accelerometer[_Y]
-            sendval_ninedof.translation.z = fxos.accelerometer[_Z]
 
+class Sensor:
+    # Offsets calculated by collecting data with the sensor stationary, averaging the values, and flipping the sign
+    gyro_roll_offset = 0.092768
+    gyro_pitch_offset = -0.290789
+    gyro_yaw_offset = -0.387151
+    accel_x_offset = 0
+    accel_y_offset = 0
+    accel_z_offset = 0
+
+    # Magnetometer calibration is difficult due to all the factors that coud affect it.
+    # This will remain uncalibrated since it is not currently being used.
+    mag_x_offset = 0
+    mag_y_offset = 0
+    mag_z_offset = 0
+
+    def __init__(self, i2c):
+        # TODO: Set these values according to a user-specified transform that takes rotation of the sensor into account
+        self._Roll = 0
+        self._Pitch = 1
+        self._Yaw = 2
+        self._X = 0
+        self._Y = 1
+        self._Z = 2
+
+        if enableSensor:
+            self._i2c = i2c
+            self._sensor_gyro = adafruit_fxas21002c.FXAS21002C(self._i2c)
+            self._sensor = adafruit_fxos8700.FXOS8700(self._i2c)
         else:
-            # Just in case we're not running with the right hardware, assume we're running in
-            # simulation and generate random values for the sake of testing.
-            sendval_ninedof.orientation.roll = np.random.normal()
-            sendval_ninedof.orientation.pitch = np.random.normal()
-            sendval_ninedof.orientation.yaw = np.random.normal()
-            sendval_ninedof.translation.x = np.random.normal()
-            sendval_ninedof.translation.y = np.random.normal()
-            sendval_ninedof.translation.z = np.random.normal()
+            self._i2c = None
+            self._sensor_gyro = None
+            self._sensor = None
 
-        nineDof_current_pub.publish(sendval_ninedof)
-        rate.sleep()
+    # getGyro reads gyroscope values
+    @property
+    def gyro_roll(self):
+        return self._sensor_gyro.gyroscope[self._Roll] + self.gyro_roll_offset if enableSensor else np.random.normal()
+
+    @property
+    def gyro_pitch(self):
+        return self._sensor_gyro.gyroscope[self._Pitch] + self.gyro_pitch_offset if enableSensor else np.random.normal()
+
+    @property
+    def gyro_yaw(self):
+        return self._sensor_gyro.gyroscope[self._Yaw] + self.gyro_yaw_offset if enableSensor else np.random.normal()
+
+    @property
+    def gyro_magnitude(self):
+        return calc_magnitude(self.gyro_roll, self.gyro_pitch, self.gyro_yaw)
+
+    # getAcc reads sensor data from accelerometer
+    @property
+    def accel_x(self):
+        return self._sensor.accelerometer[self._X] + self.accel_x_offset if enableSensor else np.random.normal()
+
+    @property
+    def accel_y(self):
+        return self._sensor.accelerometer[self._Y] + self.accel_y_offset if enableSensor else np.random.normal()
+
+    @property
+    def accel_z(self):
+        return self._sensor.accelerometer[self._Z] + self.accel_z_offset if enableSensor else np.random.normal()
+
+    @property
+    def accel_magnitude(self):
+        return calc_magnitude(self.accel_x, self.accel_y, self.accel_z)
+
+    # getMag reads magnetometer values
+    @property
+    def mag_x(self):
+        return self._sensor.magnetometer[self._X] + self.mag_x_offset if enableSensor else np.random.normal()
+
+    @property
+    def mag_y(self):
+        return self._sensor.magnetometer[self._Y] + self.mag_y_offset if enableSensor else np.random.normal()
+
+    @property
+    def mag_z(self):
+        return self._sensor.magnetometer[self._Z] + self.mag_z_offset if enableSensor else np.random.normal()
+
+    @property
+    def mag_magnitude(self):
+        return calc_magnitude(self.mag_x, self.mag_y, self.mag_z)
 
 
-if __name__ == '__main__':
-    publisher()
+def test_output():
+    while True:
+        # os.system('clear')
+        i2c = busio.I2C(board.SCL, board.SDA)
+        sensor = Sensor(i2c)
+        print(' Accelerometer:\tmagnitude: {0:.2f} \tx: {1:.2f} \ty: {2:.2f} \tz: {3:.2f}'.format(
+                sensor.accel_magnitude,
+                sensor.accel_x,
+                sensor.accel_y,
+                sensor.accel_z))
+        print(' Magnetometer:\tmagnitude: {0:.2f} \tx: {1:.2f} \ty: {2:.2f} \tz: {3:.2f}'.format(
+                sensor.mag_magnitude,
+                sensor.mag_x,
+                sensor.mag_y,
+                sensor.mag_z))
+        print(' Gyroscope:\tmagnitude: {0:.2f} \troll: {1:.2f} \tpitch: {2:.2f} \tyaw: {3:.2f}\n'.format(
+                sensor.gyro_magnitude,
+                sensor.gyro_roll,
+                sensor.gyro_pitch,
+                sensor.gyro_yaw))
+        time.sleep(5)
+
+def main():
+    pass
+
+if __name__ == "__main__":
+    main()
