@@ -1,3 +1,4 @@
+
 import numpy as np
 import os
 import sys
@@ -12,7 +13,7 @@ from math import sqrt
 import rclpy
 from rclpy.node import Node
 
-from wurovMessages.msg import Ninedof
+from wurov_messages.msg import Ninedof
 
 try:
     import board
@@ -32,8 +33,8 @@ except Exception as e:
 logging.basicConfig(format='[Send][%(levelname)s]: %(message)s', level=logging.DEBUG)
 
 
-def calc_magnitude(x, y, z):
-    return sqrt((x ** 2) + (y ** 2) + (z ** 2))
+def calc_magnitude(x: double, y: double, z: double) -> double:
+    return double(sqrt((x ** 2) + (y ** 2) + (z ** 2)))
 
 
 class Sensor:
@@ -47,11 +48,11 @@ class Sensor:
 
     # Magnetometer calibration is difficult due to all the factors that coud affect it.
     # This will remain uncalibrated since it is not currently being used.
-    mag_x_offset = 0
-    mag_y_offset = 0
-    mag_z_offset = 0
+    mag_x_offset: double = 0
+    mag_y_offset: double = 0
+    mag_z_offset: double = 0
 
-    def __init__(self, i2c):
+    def __init__(self, i2c: busio.I2C):
         # TODO: Set these values according to a user-specified transform that takes rotation of the sensor into account
         self._Roll = 0
         self._Pitch = 1
@@ -71,53 +72,53 @@ class Sensor:
 
     # getGyro reads gyroscope values
     @property
-    def gyro_roll(self):
+    def gyro_roll(self) -> double:
         return self._sensor_gyro.gyroscope[self._Roll] + self.gyro_roll_offset if enableSensor else np.random.normal()
 
     @property
-    def gyro_pitch(self):
+    def gyro_pitch(self) -> double:
         return self._sensor_gyro.gyroscope[self._Pitch] + self.gyro_pitch_offset if enableSensor else np.random.normal()
 
     @property
-    def gyro_yaw(self):
+    def gyro_yaw(self) -> double:
         return self._sensor_gyro.gyroscope[self._Yaw] + self.gyro_yaw_offset if enableSensor else np.random.normal()
 
     @property
-    def gyro_magnitude(self):
+    def gyro_magnitude(self) -> double:
         return calc_magnitude(self.gyro_roll, self.gyro_pitch, self.gyro_yaw)
 
     # getAcc reads sensor data from accelerometer
     @property
-    def accel_x(self):
+    def accel_x(self) -> double:
         return self._sensor.accelerometer[self._X] + self.accel_x_offset if enableSensor else np.random.normal()
 
     @property
-    def accel_y(self):
+    def accel_y(self) -> double:
         return self._sensor.accelerometer[self._Y] + self.accel_y_offset if enableSensor else np.random.normal()
 
     @property
-    def accel_z(self):
+    def accel_z(self) -> double:
         return self._sensor.accelerometer[self._Z] + self.accel_z_offset if enableSensor else np.random.normal()
 
     @property
-    def accel_magnitude(self):
+    def accel_magnitude(self) -> double:
         return calc_magnitude(self.accel_x, self.accel_y, self.accel_z)
 
     # getMag reads magnetometer values
     @property
-    def mag_x(self):
+    def mag_x(self) -> double:
         return self._sensor.magnetometer[self._X] + self.mag_x_offset if enableSensor else np.random.normal()
 
     @property
-    def mag_y(self):
+    def mag_y(self) -> double:
         return self._sensor.magnetometer[self._Y] + self.mag_y_offset if enableSensor else np.random.normal()
 
     @property
-    def mag_z(self):
+    def mag_z(self) -> double:
         return self._sensor.magnetometer[self._Z] + self.mag_z_offset if enableSensor else np.random.normal()
 
     @property
-    def mag_magnitude(self):
+    def mag_magnitude(self) -> double:
         return calc_magnitude(self.mag_x, self.mag_y, self.mag_z)
 
 
@@ -126,6 +127,7 @@ def test_output():
         # os.system('clear')
         i2c = busio.I2C(board.SCL, board.SDA)
         sensor = Sensor(i2c)
+        # This can be printed more cleanly using ascii escape chars to move the cursor back
         print(' Accelerometer:\tmagnitude: {0:.2f} \tx: {1:.2f} \ty: {2:.2f} \tz: {3:.2f}'.format(
                 sensor.accel_magnitude,
                 sensor.accel_x,

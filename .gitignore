@@ -230,3 +230,4 @@ CATKIN_IGNORE
 
 # VS Code stuff
 .vscode/settings.json
+.vscode/c_cpp_properties.json
