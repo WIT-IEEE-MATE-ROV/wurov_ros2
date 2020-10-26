@@ -11,7 +11,12 @@ setup(
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
     ],
-    install_requires=['setuptools'],
+    install_requires=[
+        'setuptools',
+        'adafruit-circuitpython-fxos8700',
+        'adafruit-circuitpython-fxas21002c',
+        'numpy'
+    ],
     zip_safe=True,
     maintainer='Wurov',
     maintainer_email='ieee@wit.edu',
